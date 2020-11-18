@@ -1,0 +1,171 @@
+import * as THREE from '../jsm/build/three.module.js';
+import { EffectComposer } from '../jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from '../jsm/postprocessing/RenderPass.js';
+import { BokehPass } from '../jsm/postprocessing/BokehPass.js';
+
+//const EffectComposer = require("../jsm/postprocessing/EffectComposer.js")
+//THREE.RenderPass = require("../jsm/postprocessing/RenderPass.js")
+//const BokehPass = require("../jsm/postprocessing/BokehPass.js")
+
+export class FlyingOverCube {
+
+    constructor(){
+        this.CUBE_SIZE = 12;
+        this.COL_LENGTH = 20;
+        this.ROW_LENGTH = 5;
+        this.STACK_SIZE = 10;
+    }
+
+    //var scene, renderer, camera, postprocessing;
+    init(stage) {
+
+        // シーン
+        this.scene = new THREE.Scene();
+
+        // レンダラー
+        this.renderer = new THREE.WebGLRenderer();
+        this.renderer.setSize( window.innerWidth, window.innerHeight );
+        this.renderer.setPixelRatio( window.devicePixelRatio );
+        this.renderer.setClearColor(new THREE.Color(0xFFFFFF));
+
+        stage.appendChild(this.renderer.domElement);
+
+        // カメラ
+        this.camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 1000 );
+        this.camera.position.set(0, 20, 0);
+
+        // ライト
+        var directionalLight = new THREE.DirectionalLight('#ffffff', 0.9);
+        directionalLight.position.set(0, 1, 0);
+        this.scene.add(directionalLight);
+
+        var ambientLight = new THREE.AmbientLight('#ffffff', 0.7);
+        this.scene.add(ambientLight);
+
+        // キューブ
+        this.grounds = [];
+        var self = this;
+
+        function getGrounds(){                
+            const geometory = new THREE.Geometry();
+            for(let row=0; row<self.ROW_LENGTH; row++){
+                for(let col=0; col<self.COL_LENGTH; col++){
+                    var cube = new THREE.Mesh(new THREE.BoxGeometry(self.CUBE_SIZE, self.CUBE_SIZE * Math.random() + (Math.random() * 8 * (Math.abs(col - self.COL_LENGTH/2)) ), self.CUBE_SIZE));
+                    cube.position.set(self.CUBE_SIZE*col - (self.CUBE_SIZE*self.COL_LENGTH/2), 0, -self.CUBE_SIZE*row);
+                    geometory.mergeMesh(cube);
+                }
+            }
+
+            var material = new THREE.MeshLambertMaterial( { color: '#eeeeee', transparent: true} );
+            var ground = new THREE.Mesh(geometory, material );
+            return ground
+        }
+
+        for (let i=0; i<this.STACK_SIZE; i++){
+            let ground = getGrounds();
+            ground.position.z = -this.CUBE_SIZE*this.ROW_LENGTH*i;
+            this.grounds.push(ground)
+            this.scene.add(ground);
+        }
+
+        this.init_postprocessing();
+
+        function onWindowResize() {
+            var windowHalfX = window.innerWidth / 2;
+            var windowHalfY = window.innerHeight / 2;
+
+            var width = window.innerWidth;
+            var height = window.innerHeight;
+
+            self.camera.aspect = width / height;
+            self.camera.updateProjectionMatrix();
+
+            self.renderer.setSize( width, height );
+            self.postprocessing.composer.setSize( width, height );
+        }
+
+        window.addEventListener('resize', onWindowResize);
+    }
+
+    // PostProcessing
+    init_postprocessing(){
+
+        this.postprocessing = {};
+        // composer
+        var composer = new EffectComposer(this.renderer);
+
+        // render pass
+        var renderPass = new RenderPass(this.scene, this.camera);
+        composer.addPass(renderPass);
+
+        // 被写界深度
+        var bokehSettings = {
+            focus : 120, aperture : 0.00009,  maxblur : 0.01,
+            width: window.innerWidth, height : window.innerHeight
+        }
+        var bokehPass =  new BokehPass(this.scene, this.camera, bokehSettings );
+        bokehPass.renderToScreen = true;
+        composer.addPass(bokehPass);
+
+        this.postprocessing.composer = composer;
+        this.postprocessing.bokeh = bokehPass;
+
+        this.postprocessing.composer.render(0.2);
+    }
+
+
+    // レンダリング
+    //scale_y = 1;
+    //scale_up = true;
+    animate() {
+        /*
+        if(scale_up){
+            scale_y += 0.03; 
+            if (scale_y > 1.2){
+                scale_up = false;
+            }
+        } else {
+            scale_y -= 0.005;
+            if (scale_y < 1){
+                scale_up = true;
+            }
+        }
+        */
+
+        var self = this;
+        var speed = 0.3 + (Math.random() * 2.5);
+
+        function frame(){
+            //console.log('frame')
+
+            // 地面更新
+            for(let i=0; i<self.grounds.length; i++){
+
+            // 上下運動
+            //grounds[i].scale.y = scale_y;
+
+            // 奥行き移動
+            self.grounds[i].position.z += speed//0.6;
+
+            if (self.grounds[i].material.opacity <= 1){
+                self.grounds[i].material.opacity += 0.01;
+            }
+
+            // ローテーション
+            let end = self.grounds[i].position.z - self.CUBE_SIZE * self.ROW_LENGTH;
+            if (end > 0){
+                self.grounds[i].position.z = -self.CUBE_SIZE * self.ROW_LENGTH * (self.STACK_SIZE-1);
+                self.grounds[i].material.opacity = 0;
+            }
+            }
+
+            self.postprocessing.composer.render(0.2);
+            requestAnimationFrame(frame);
+
+        }
+
+        frame();            
+    }
+
+
+}
