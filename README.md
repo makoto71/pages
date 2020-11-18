@@ -1,0 +1,2 @@
+# pages
+Github Pages用
